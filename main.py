@@ -140,19 +140,22 @@ def get_result(u, user_data, locs, max_k, trimming_coeff):
     best_auc = None
     best_gap = None
     best_k = 1
-    best_centers = None    
+    best_centers = None
+    
     
     user_data['coords'] = list(zip(user_data.lat, user_data.lon))        
     user_data['x'], user_data['y'], user_data['z'] = to_cartesian(user_data['lat'], user_data['lon'])
     com = to_latlon(np.sum(user_data['x']*user_data.time_spent), np.sum(user_data['y']*user_data.time_spent), np.sum(user_data['z']*user_data.time_spent))
     dist = haversine_vector(list(user_data.coords), [com], comb=True)
     rog = np.sqrt(np.sum(user_data.time_spent.to_numpy() * (dist**2)))
-    com_auc = get_area_auc(com, 1, rog**2, user_data.copy())    
+    com_auc = get_area_auc(com, 1, rog**2, user_data.copy())
+    
     
     result['com'] = com
     result['rog'] = rog
     result['L1'], result['L2'] = list(user_data.sort_values('time_spent', ascending=False).coords[:2])
-    result['auc_com'] = com_auc    
+    result['auc_com'] = com_auc
+    
     
     train_data_list = []
     # find max min and shape outside loop
@@ -213,7 +216,6 @@ def get_result(u, user_data, locs, max_k, trimming_coeff):
             best_centers = true_centers
             best_k = k
         highest_gap = max(highest_gap, gap)
-  
     
     result['k'] = best_k
     result['auc_k'], result['centers'] = best_auc, list(best_centers)
@@ -224,7 +226,7 @@ def get_result(u, user_data, locs, max_k, trimming_coeff):
     result['auc_kmeans'] = get_area_auc(kmeans_centers, result['k'], rog**2, user_data.copy())
     return result
 
-def main(data_path, results_path="results.pkl", max_k=6, trimming_coeff=0.9):
+def main(data_path, results_path="demo_results.pkl", max_k=6, trimming_coeff=0.9):
     data = pd.read_pickle(data_path)
     try:
         data['time_spent'] = data['end_time'] - data['start_time']
