@@ -55,7 +55,7 @@ class TrimmedKMeans:
             self.inertia += np.sum((weights * cluster_wt) * (dists**2))
         return np.sqrt(self.inertia), self.cluster_assignment
         
-    def update(self, verbose=False):
+    def update(self):
         self.distance_matrix = DM(self.data, self.centers)
         self.cluster_assignment = np.argmin(self.distance_matrix, axis=1)
         self.distance = np.min(self.distance_matrix, axis=1)
@@ -109,8 +109,8 @@ class TrimmedKMeans:
         return best_centers, best_labels, best_inertia
     
 
-def get_result(u, to_print=''):
-    print(f"User {u}, {to_print}")
+def get_result(u, user_data, locs, max_k, trimming_coeff):
+    #print(f"User {u}, {to_print}")
     result = {'user':u, 'com':None, 'tcom':None, 'rog':None, 'L1':None, 'L2':None, 'k':None, 'centers':None, 'auc_com':None, 'auc_1':None, 'auc_2':None, 'auc_k':None, 'auc_kmeans':None}
     def get_area_auc(x, k, max_area, df):
         centers = x
@@ -127,8 +127,11 @@ def get_result(u, to_print=''):
         y = [0] + list(df.time_spent) + [list(df.time_spent)[-1]]
         return auc(x, y)
         
-    user_data = data[data.user == u][['loc', 'time_spent']].groupby('loc').sum()    
-    user_data.time_spent = user_data.time_spent.dt.total_seconds()
+    user_data = user_data[['loc', 'time_spent']].groupby('loc').sum()
+    try:
+        user_data.time_spent = user_data.time_spent.dt.total_seconds()
+    except:
+        pass
     user_data.time_spent = user_data.time_spent / user_data.time_spent.sum()
     user_data['lat'] = locs.loc[user_data.index].lat
     user_data['lon'] = locs.loc[user_data.index].lon
@@ -137,22 +140,19 @@ def get_result(u, to_print=''):
     best_auc = None
     best_gap = None
     best_k = 1
-    best_centers = None
-    
+    best_centers = None    
     
     user_data['coords'] = list(zip(user_data.lat, user_data.lon))        
     user_data['x'], user_data['y'], user_data['z'] = to_cartesian(user_data['lat'], user_data['lon'])
     com = to_latlon(np.sum(user_data['x']*user_data.time_spent), np.sum(user_data['y']*user_data.time_spent), np.sum(user_data['z']*user_data.time_spent))
     dist = haversine_vector(list(user_data.coords), [com], comb=True)
     rog = np.sqrt(np.sum(user_data.time_spent.to_numpy() * (dist**2)))
-    com_auc = get_area_auc(com, 1, rog**2, user_data.copy())
-    
+    com_auc = get_area_auc(com, 1, rog**2, user_data.copy())    
     
     result['com'] = com
     result['rog'] = rog
     result['L1'], result['L2'] = list(user_data.sort_values('time_spent', ascending=False).coords[:2])
-    result['auc_com'] = com_auc
-    
+    result['auc_com'] = com_auc    
     
     train_data_list = []
     # find max min and shape outside loop
@@ -174,8 +174,8 @@ def get_result(u, to_print=''):
         train_data_list.append((train_data, train_rog))
     
     
-    for k in range(1, 5):   
-        Trim = TrimmedKMeans(k, user_data[['x','y', 'z']].to_numpy(), weights = user_data.time_spent.to_numpy())
+    for k in range(1, max_k+1):   
+        Trim = TrimmedKMeans(k, user_data[['x','y', 'z']].to_numpy(), weights = user_data.time_spent.to_numpy(), cutoff=trimming_coeff)
         true_centers, _, _ = Trim.get_best_fit()        
         true_centers = np.array([np.array(to_latlon(*i)) for i in true_centers])
         true_auc = get_area_auc(true_centers, k, rog**2, user_data.copy())
@@ -188,7 +188,7 @@ def get_result(u, to_print=''):
         
         new_aucs = []
         for train_data, train_rog in train_data_list:
-            Trim = TrimmedKMeans(k, train_data[['x','y', 'z']].to_numpy(), weights = train_data.time_spent.to_numpy())
+            Trim = TrimmedKMeans(k, train_data[['x','y', 'z']].to_numpy(), weights = train_data.time_spent.to_numpy(), cutoff=trimming_coeff)
             centers, _, _ = Trim.get_best_fit()        
             centers = np.array([np.array(to_latlon(*i)) for i in centers])
             new_aucs.append(get_area_auc(centers, k, train_rog**2, train_data.copy()))
@@ -204,7 +204,6 @@ def get_result(u, to_print=''):
             best_auc = true_auc
             best_centers = true_centers
             best_k = 1
-            print(f"User {u} | k={k} | k*={best_k}")
             continue
         
         
@@ -214,8 +213,7 @@ def get_result(u, to_print=''):
             best_centers = true_centers
             best_k = k
         highest_gap = max(highest_gap, gap)
-        
-        print(f"User {u} | k={k} | k*={best_k}")
+  
     
     result['k'] = best_k
     result['auc_k'], result['centers'] = best_auc, list(best_centers)
@@ -224,14 +222,17 @@ def get_result(u, to_print=''):
     kmeans.fit(user_data[['x','y', 'z']].to_numpy(), sample_weight = user_data.time_spent.to_numpy())
     kmeans_centers = np.array([np.array(to_latlon(*i)) for i in kmeans.cluster_centers_])
     result['auc_kmeans'] = get_area_auc(kmeans_centers, result['k'], rog**2, user_data.copy())
-    print(f"User {u} | k* = {result['k']} | auc = {result['auc_k']}")
     return result
 
-
-#data =   # Put input dataframe here
-#data['time_spent'] = data['end_time'] - data['start_time']
-#user_list = sorted(data.user.unique())
-#locs = data[['loc', 'lat', 'lon']].groupby('loc').mean().copy()
-
-#x = pd.DataFrame(Parallel(n_jobs=-1)(delayed(get_result)(u, f'{i+1}/len(user_list)') for i,u in enumerate(user_list))).set_index('user')
-#x.to_pickle('results.pkl')
+def main(data_path, results_path="results.pkl", max_k=6, trimming_coeff=0.9):
+    data = pd.read_pickle(data_path)
+    try:
+        data['time_spent'] = data['end_time'] - data['start_time']
+    except:
+        pass
+    user_list = sorted(data.user.unique())
+    locs = data[['loc', 'lat', 'lon']].groupby('loc').mean().copy()
+    
+    result = pd.DataFrame(Parallel(n_jobs=-1)(delayed(get_result)(u, data[data.user == u], locs, max_k, trimming_coeff) for u in user_list)).set_index('user')
+    result.to_pickle(results_path)
+    return result
