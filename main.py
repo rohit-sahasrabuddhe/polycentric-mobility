@@ -17,7 +17,7 @@ def to_latlon(x,y,z):
     return lat, lon
 
 class TrimmedKMeans:
-    def __init__(self, k, data, weights):
+    def __init__(self, k, data, weights, cutoff):
         self.k = k
         self.data = data #A numpy array of size [N, 3]
         self.weights = weights / np.sum(weights) #size [N,]
@@ -27,6 +27,8 @@ class TrimmedKMeans:
         self.cluster_assignment = np.argmin(self.distance_matrix, axis=1)
         self.distance = np.min(self.distance_matrix, axis=1)
         self.inertia = 0
+        
+        self.cutoff=cutoff
         
     def get_inertia_labels(self):
         self.distance_matrix = DM(self.data, self.centers)
@@ -45,10 +47,10 @@ class TrimmedKMeans:
             weights = weights / cluster_wt # this gives the local weight (within the cluster)
             weights_cumsum = np.cumsum(weights)
             
-            last_entry = np.sum(weights_cumsum <= 0.9) + 1 # the index of the last location that needs to be looked at
+            last_entry = np.sum(weights_cumsum <= self.cutoff) + 1 # the index of the last location that needs to be looked at
             coords, weights, dists, weights_cumsum = coords[:last_entry].copy(), weights[:last_entry].copy(), dists[:last_entry].copy(), weights_cumsum[:last_entry].copy()
             # Remove the extra weight
-            weights[-1] -= weights_cumsum[-1] - 0.9
+            weights[-1] -= weights_cumsum[-1] - self.cutoff
             # Add to the inertia
             self.inertia += np.sum((weights * cluster_wt) * (dists**2))
         return np.sqrt(self.inertia), self.cluster_assignment
@@ -70,10 +72,10 @@ class TrimmedKMeans:
             weights = weights / cluster_wt # this gives the local weight (within the cluster)
             weights_cumsum = np.cumsum(weights)
             # last entry is the index of the last location that needs to be looked at
-            last_entry = np.sum(weights_cumsum <= 0.9) + 1
+            last_entry = np.sum(weights_cumsum <= self.cutoff) + 1
             coords, weights, dists, weights_cumsum = coords[:last_entry].copy(), weights[:last_entry].copy(), dists[:last_entry].copy(), weights_cumsum[:last_entry].copy()
             # Remove the extra weight
-            weights[-1] -= weights_cumsum[-1] - 0.9
+            weights[-1] -= weights_cumsum[-1] - self.cutoff
             
             # Update the center
             weights = weights / np.sum(weights)
@@ -88,14 +90,21 @@ class TrimmedKMeans:
     def get_best_fit(self):
         best_centers, best_inertia, best_labels = None , np.inf, None
         for _ in range(50): #compare across 50 random initializations
+            c = np.inf
             self.centers = self.data[np.random.choice(range(self.data.shape[0]), size=self.k, replace=False)]
             for _ in range(50): #fixed number of iterations
+                old_c = np.copy(self.centers)
                 self.update()
+                c = np.sum((self.centers - old_c)**2)
+                if c == 0:
+                    break
             this_inertia, this_labels = self.get_inertia_labels()
             if this_inertia < best_inertia:
                 best_inertia = this_inertia
                 best_labels = this_labels
                 best_centers = self.centers
+            if best_inertia == 0:
+                break
             
         return best_centers, best_labels, best_inertia
     
