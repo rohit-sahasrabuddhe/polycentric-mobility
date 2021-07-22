@@ -39,4 +39,4 @@ The output is a pandas dataframe (also stored as `results_path`) with the column
 
 The repo contains `demo_data.pkl`, which is a synthetic dataset generated to demonstrate the working of the code. There are 300 unique locations in the dataset, sampled 100 each from three 2-dimensional Gaussians. The dataset contains records of three users (User 1, 2 and 3), with 600 records of equal weight per user. User _i_ has records sampled uniformly from _i_ clusters.
 
-Running the `main` function on `demo_data.pkl` with default options creates `demo_results.pkl`.
+Running the `main` function on `demo_data.pkl` with default options creates `demo_results.pkl`. A single run takes 1min 46s measured via the `%%timeit` utility on Jupyter notebook (`5 loops, best of 5: 1min 46s per loop`).
